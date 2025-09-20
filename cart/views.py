@@ -1,9 +1,12 @@
-from django.shortcuts import render
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import render, get_object_or_404, redirect
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.core.paginator import Paginator
+from django.contrib.auth.decorators import login_required
 from movies.models import Movie
 from .utils import calculate_cart_total
-from .models import Order, Item
-from django.contrib.auth.decorators import login_required
+from .models import Order, Item, CustomerFeedback
+import json
 
 def index(request):
     cart_total = 0
@@ -59,4 +62,80 @@ def purchase(request):
     template_data = {}
     template_data['title'] = 'Purchase confirmation'
     template_data['order_id'] = order.id
+    template_data['show_feedback_popup'] = True  # Flag to trigger popup
     return render(request, 'cart/purchase.html', {'template_data': template_data})
+
+def customer_feedback_list(request):
+    """Display all customer feedback on a dedicated page"""
+    feedback_list = CustomerFeedback.objects.all().order_by('-created_at')
+    
+    # Pagination - 10 feedback entries per page
+    paginator = Paginator(feedback_list, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Calculate summary statistics
+    total_feedback = feedback_list.count()
+    
+    template_data = {
+        'title': 'Customer Feedback',
+        'page_obj': page_obj,
+        'total_feedback': total_feedback,
+    }
+    return render(request, 'cart/customer_feedback.html', {'template_data': template_data})
+
+@require_POST
+def submit_feedback(request):
+    """Handle AJAX submission of customer feedback"""
+    try:
+        # Parse JSON data from request
+        data = json.loads(request.body)
+        
+        # Get order number from data
+        order_id = data.get('order_id')
+        if not order_id:
+            return JsonResponse({
+                'success': False,
+                'error': 'Order ID is required.'
+            }, status=400)
+        
+        # Get the order
+        try:
+            order = Order.objects.get(id=order_id)
+        except Order.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Order not found.'
+            }, status=404)
+        
+        # Validate that feedback_text is not empty
+        feedback_text = data.get('feedback_text', '').strip()
+        if not feedback_text:
+            return JsonResponse({
+                'success': False,
+                'error': 'Feedback text is required.'
+            }, status=400)
+        
+        # Create feedback instance
+        feedback = CustomerFeedback(
+            name=data.get('name', '').strip() or None,
+            feedback_text=feedback_text,
+            order=order
+        )
+        feedback.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Thank you for your feedback!'
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid data format.'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': 'An error occurred while saving your feedback.'
+        }, status=500)
