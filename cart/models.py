@@ -20,3 +20,23 @@ class Item(models.Model):
 
     def __str__(self):
         return str(self.id) + ' - ' + self.movie.name
+
+class CustomerFeedback(models.Model):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, blank=True, null=True, help_text="Customer name (optional)")
+    feedback_text = models.TextField(help_text="Customer's thoughts on the checkout process")
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, help_text="Associated order")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']  # Most recent first
+        verbose_name = "Customer Feedback"
+        verbose_name_plural = "Customer Feedback"
+
+    def __str__(self):
+        display_name = self.name if self.name else "Anonymous"
+        return f"{display_name} - Order #{self.order.id}"
+
+    @property
+    def display_name(self):
+        return self.name if self.name else "Anonymous"
